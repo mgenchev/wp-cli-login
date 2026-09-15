@@ -1,6 +1,6 @@
 {
     "name": "wp-login/wp-login",
-    "description": "A small WP-CLI package that creates a one-time WordPress admin login link and opens it in the browser.",
+    "description": "A small WP-CLI package that creates a one-time WordPress admin login link and opens or copies it.",
     "type": "wp-cli-package",
     "license": "MIT",
     "require": {

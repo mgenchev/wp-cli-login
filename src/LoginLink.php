@@ -36,6 +36,7 @@ final class LoginLink {
 
         $filename   = self::FILE_PREFIX . $file_random . '.php';
         $path       = $root . DIRECTORY_SEPARATOR . $filename;
+        $lock_path  = $path . '.lock';
         $expires_at = time() + self::TTL_SECONDS;
         $token_hash = hash( 'sha256', $token );
         $source     = $this->build_bridge_source( $token_hash, $user_id, $expires_at );
@@ -54,7 +55,26 @@ final class LoginLink {
             throw new \RuntimeException( sprintf( 'Could not write the temporary login endpoint: %s', $path ) );
         }
 
-        @chmod( $path, 0644 );
+        $lock_handle = @fopen( $lock_path, 'x' );
+
+        if ( false === $lock_handle ) {
+            @unlink( $path );
+            throw new \RuntimeException( sprintf( 'Could not create the temporary login lock: %s', $lock_path ) );
+        }
+
+        $lock_written = fwrite( $lock_handle, '1' );
+        fclose( $lock_handle );
+
+        if ( false === $lock_written || 1 !== $lock_written ) {
+            @unlink( $lock_path );
+            @unlink( $path );
+            throw new \RuntimeException( sprintf( 'Could not initialize the temporary login lock: %s', $lock_path ) );
+        }
+
+        if ( 'Windows' !== PHP_OS_FAMILY ) {
+            @chmod( $path, 0644 );
+            @chmod( $lock_path, 0644 );
+        }
 
         $url = rtrim( $site_url, '/' ) . '/' . rawurlencode( $filename ) . '?token=' . rawurlencode( $token );
 
@@ -84,10 +104,21 @@ final class LoginLink {
      * @return void
      */
     private function cleanup_stale_files( $root ) {
-        $pattern = $root . DIRECTORY_SEPARATOR . self::FILE_PREFIX . '*.php';
-        $paths   = glob( $pattern );
+        $patterns = array(
+            $root . DIRECTORY_SEPARATOR . self::FILE_PREFIX . '*.php',
+            $root . DIRECTORY_SEPARATOR . self::FILE_PREFIX . '*.php.lock',
+        );
+        $paths = array();
 
-        if ( false === $paths ) {
+        foreach ( $patterns as $pattern ) {
+            $matches = glob( $pattern );
+
+            if ( false !== $matches ) {
+                $paths = array_merge( $paths, $matches );
+            }
+        }
+
+        if ( empty( $paths ) ) {
             return;
         }
 
@@ -121,8 +152,10 @@ $expected_hash = '%s';
 $user_id       = %d;
 $expires_at    = %d;
 $token         = isset( $_GET['token'] ) ? (string) $_GET['token'] : '';
+$lock_path     = __FILE__ . '.lock';
 
 if ( time() > $expires_at ) {
+    @unlink( $lock_path );
     @unlink( __FILE__ );
     http_response_code( 410 );
     exit( 'Login link expired.' );
@@ -133,7 +166,7 @@ if ( '' === $token || ! hash_equals( $expected_hash, hash( 'sha256', $token ) ) 
     exit( 'Invalid login link.' );
 }
 
-$lock = @fopen( __FILE__, 'r' );
+$lock = @fopen( $lock_path, 'r' );
 
 if ( false === $lock || ! flock( $lock, LOCK_EX | LOCK_NB ) ) {
     http_response_code( 409 );
@@ -146,16 +179,22 @@ require __DIR__ . '/wp-load.php';
 $user = get_user_by( 'id', $user_id );
 
 if ( ! $user ) {
+    @unlink( $lock_path );
     @unlink( __FILE__ );
     http_response_code( 404 );
     exit( 'WordPress user no longer exists.' );
 }
 
-@unlink( __FILE__ );
 wp_clear_auth_cookie();
 wp_set_current_user( $user_id );
 wp_set_auth_cookie( $user_id, false, is_ssl() );
 wp_safe_redirect( admin_url() );
+
+// Keep the executable endpoint readable until the request is effectively done.
+// On Windows, locking or deleting the currently executing PHP file too early can
+// make concurrent reads fail with errno=13 (Permission denied).
+@unlink( $lock_path );
+@unlink( __FILE__ );
 exit;
 
 PHP,

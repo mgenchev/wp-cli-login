@@ -18,15 +18,11 @@ namespace {
 
     class WP_CLI {
         public static $config = array(
-            'user' => 'editor',
+            'user' => 'Lindstrom',
         );
 
         public static function log( $message ) {
             echo $message . "\n";
-        }
-
-        public static function warning( $message ) {
-            echo 'Warning: ' . $message . "\n";
         }
 
         public static function error( $message ) {
@@ -74,15 +70,15 @@ namespace WpLogin {
         }
 
         public function find( $value ) {
-            if ( 'editor' !== $value ) {
+            if ( 'Lindstrom' !== $value ) {
                 return null;
             }
 
             return (object) array(
-                'ID'         => 2,
-                'user_login' => 'editor',
-                'user_email' => 'editor@example.test',
-                'roles'      => array( 'editor' ),
+                'ID'         => 4272,
+                'user_login' => 'Lindstrom',
+                'user_email' => 'lindstrom@example.test',
+                'roles'      => array( 'customer' ),
             );
         }
     }
@@ -90,48 +86,39 @@ namespace WpLogin {
     class UserSelector {
         public function __construct( $users ) {
             unset( $users );
+            throw new \RuntimeException( 'Interactive selector must not be constructed when global --user is set.' );
         }
+    }
 
-        public function select() {
-            throw new \RuntimeException( 'Interactive user picker should not run in this scenario.' );
+    class LoginLink {
+        public function create( $root, $url, $user_id ) {
+            unset( $root, $url );
+            return array(
+                'url'        => 'https://example.test/login?user=' . $user_id,
+                'path'       => '/tmp/fake',
+                'expires_at' => time() + 60,
+            );
         }
     }
 
     class Browser {
         public function open( $url ) {
             unset( $url );
-            return true;
+            return false;
         }
     }
 
     class Clipboard {
         public function copy( $url ) {
             unset( $url );
-            return true;
+            return false;
         }
     }
 }
 
 namespace {
-    require dirname( __DIR__ ) . '/src/LoginLink.php';
     require dirname( __DIR__ ) . '/src/LoginCommand.php';
 
-    $assoc_args = array();
-    $action     = (string) getenv( 'WP_LOGIN_TEST_ACTION' );
-
-    if ( 'open' === $action ) {
-        $assoc_args['open'] = true;
-    } elseif ( 'copy' === $action ) {
-        $assoc_args['copy'] = true;
-    } elseif ( 'interactive' === $action ) {
-        // Intentionally prompt.
-    } elseif ( 'conflict' === $action ) {
-        $assoc_args['open'] = true;
-        $assoc_args['copy'] = true;
-    } else {
-        $assoc_args['open'] = false;
-    }
-
     $command = new WpLogin\LoginCommand();
-    $command( array(), $assoc_args );
+    $command( array(), array( 'no-open' => true ) );
 }

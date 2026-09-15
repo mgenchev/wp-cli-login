@@ -3,16 +3,29 @@
 namespace WpLogin;
 
 use WP_CLI;
-use WP_User_Query;
 
 final class UserSelector {
     private const PAGE_SIZE = 20;
 
+    /** @var UserRepository */
+    private $users;
+
     /**
-     * @return \WP_User
+     * @param UserRepository $users
+     */
+    public function __construct( UserRepository $users ) {
+        $this->users = $users;
+    }
+
+    /**
+     * @return object
      */
     public function select() {
-        $users = $this->get_initial_users();
+        $users = $this->users->first_users( 2 );
+
+        if ( empty( $users ) ) {
+            WP_CLI::error( 'No WordPress users were found for this site.' );
+        }
 
         if ( 1 === count( $users ) ) {
             return $users[0];
@@ -37,49 +50,17 @@ final class UserSelector {
     }
 
     /**
-     * Fetch at most two users so single-user sites can skip the interactive picker.
-     *
-     * @return array<int, \WP_User>
-     */
-    private function get_initial_users() {
-        $query = new WP_User_Query(
-            array(
-                'orderby' => 'ID',
-                'order'   => 'ASC',
-                'number'  => 2,
-            )
-        );
-
-        $users = $query->get_results();
-
-        if ( empty( $users ) ) {
-            WP_CLI::error( 'No WordPress users were found for this site.' );
-        }
-
-        return $users;
-    }
-
-    /**
-     * @return \WP_User
+     * @return object
      */
     private function select_administrator() {
-        $query = new WP_User_Query(
-            array(
-                'role'    => 'administrator',
-                'orderby' => 'ID',
-                'order'   => 'ASC',
-                'number'  => 2,
-            )
-        );
+        $probe = $this->users->role_page( 'administrator', null, 0, 2 );
 
-        $users = $query->get_results();
-
-        if ( empty( $users ) ) {
+        if ( empty( $probe['users'] ) ) {
             WP_CLI::error( 'No administrator users were found for this site.' );
         }
 
-        if ( 1 === count( $users ) ) {
-            return $users[0];
+        if ( 1 === count( $probe['users'] ) && ! $probe['has_more'] ) {
+            return $probe['users'][0];
         }
 
         return $this->select_from_pages( 'administrator', null, 'Administrators' );
@@ -89,61 +70,64 @@ final class UserSelector {
      * @param string|null $required_role
      * @param string|null $excluded_role
      * @param string      $title
-     * @return \WP_User
+     * @return object
      */
     private function select_from_pages( $required_role, $excluded_role, $title ) {
-        $page = 1;
+        $pages      = array();
+        $page_index = 0;
+        $cursor     = 0;
 
         while ( true ) {
-            $query_args = array(
-                'orderby' => 'ID',
-                'order'   => 'ASC',
-                'number'  => self::PAGE_SIZE,
-                'paged'   => $page,
-            );
+            if ( ! isset( $pages[ $page_index ] ) ) {
+                $page = $this->users->role_page( $required_role, $excluded_role, $cursor, self::PAGE_SIZE );
 
-            if ( null !== $required_role ) {
-                $query_args['role'] = $required_role;
-            }
+                if ( empty( $page['users'] ) ) {
+                    if ( 0 === $page_index ) {
+                        WP_CLI::error( sprintf( 'No %s were found.', strtolower( $title ) ) );
+                    }
 
-            if ( null !== $excluded_role ) {
-                $query_args['role__not_in'] = array( $excluded_role );
-            }
-
-            $query = new WP_User_Query( $query_args );
-            $users = $query->get_results();
-
-            if ( empty( $users ) ) {
-                if ( 1 === $page ) {
-                    WP_CLI::error( sprintf( 'No %s were found.', strtolower( $title ) ) );
+                    $page_index--;
+                    WP_CLI::warning( 'There are no more users on the next page.' );
+                    continue;
                 }
 
-                $page--;
-                WP_CLI::warning( 'There are no more users on the next page.' );
-                continue;
+                $pages[ $page_index ] = $page;
             }
 
+            $page = $pages[ $page_index ];
+
             WP_CLI::log( '' );
-            WP_CLI::log( sprintf( '%s — page %d', $title, $page ) );
-            $this->print_users( $users );
+            WP_CLI::log( sprintf( '%s — page %d', $title, $page_index + 1 ) );
+            $this->print_users( $page['users'] );
 
             WP_CLI::log( '' );
             WP_CLI::log( 'Enter a list number, exact login/email, n for next page, or p for previous page.' );
             $choice = $this->read_input( 'Select: ' );
 
             if ( 'n' === strtolower( $choice ) ) {
-                $page++;
+                if ( ! $page['has_more'] ) {
+                    WP_CLI::warning( 'There are no more users on the next page.' );
+                    continue;
+                }
+
+                $cursor = (int) $page['next_cursor'];
+                $page_index++;
                 continue;
             }
 
             if ( 'p' === strtolower( $choice ) ) {
-                $page = max( 1, $page - 1 );
+                if ( 0 === $page_index ) {
+                    WP_CLI::warning( 'You are already on the first page.' );
+                    continue;
+                }
+
+                $page_index--;
                 continue;
             }
 
-            $selected = $this->resolve_choice( $choice, $users );
+            $selected = $this->resolve_choice( $choice, $page['users'] );
 
-            if ( $selected && $this->matches_roles( $selected, $required_role, $excluded_role ) ) {
+            if ( $selected && $this->users->matches_roles( $selected, $required_role, $excluded_role ) ) {
                 return $selected;
             }
 
@@ -152,9 +136,9 @@ final class UserSelector {
     }
 
     /**
-     * @param string                $choice
-     * @param array<int, \WP_User> $users
-     * @return \WP_User|false
+     * @param string             $choice
+     * @param array<int, object> $users
+     * @return object|null
      */
     private function resolve_choice( $choice, $users ) {
         if ( ctype_digit( $choice ) ) {
@@ -164,40 +148,14 @@ final class UserSelector {
                 return $users[ $index ];
             }
 
-            return false;
+            return null;
         }
 
-        $user = get_user_by( 'login', $choice );
-
-        if ( ! $user && false !== strpos( $choice, '@' ) ) {
-            $user = get_user_by( 'email', $choice );
-        }
-
-        return $user ? $user : false;
+        return $this->users->find( $choice );
     }
 
     /**
-     * @param \WP_User    $user
-     * @param string|null $required_role
-     * @param string|null $excluded_role
-     * @return bool
-     */
-    private function matches_roles( $user, $required_role, $excluded_role ) {
-        $roles = (array) $user->roles;
-
-        if ( null !== $required_role && ! in_array( $required_role, $roles, true ) ) {
-            return false;
-        }
-
-        if ( null !== $excluded_role && in_array( $excluded_role, $roles, true ) ) {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * @param array<int, \WP_User> $users
+     * @param array<int, object> $users
      * @return void
      */
     private function print_users( $users ) {

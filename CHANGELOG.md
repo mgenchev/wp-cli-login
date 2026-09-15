@@ -2,20 +2,16 @@
 
 ## Unreleased
 
-- Keep the completed bootstrap spinner out of the final console output.
-- Exclude administrator accounts from `Choose existing user`; administrators remain available through the dedicated administrator option.
-- Reduce one-time login-link lifetime from 2 minutes to 1 minute.
-- Keep browser-launch failure silent and fall back to printing the URL.
-- Remove the redundant login-link-created and `Success:` status lines.
-- Initial `wp login` command.
-- Interactive administrator or existing-user selection.
-- Skip the interactive user picker and automatically select the only user on single-user sites.
-- Direct `--user=<id|login|email>` selection.
-- Short-lived one-time login endpoint with automatic cleanup.
-- Default-browser opening with `--no-open` fallback.
-- Fixed Windows browser launching by replacing `rundll32.exe` with `explorer.exe` and `cmd.exe start` fallback.
-- Added WSL browser-launch support and safer headless Linux detection.
-- Keep the one-time URL visible after a browser launch request so false-positive OS launch results do not strand the user.
-- Initial smoke and regression tests.
-- Start `wp login` before WordPress loads so progress can be shown during bootstrap.
-- Add a `Preparing WordPress...` spinner with a static fallback when animated terminal output is unavailable.
+- Fix `--no-open` handling by respecting WP-CLI's normalized `open => false` flag value.
+- Fix Windows login endpoint read failures by locking a separate sidecar file instead of the executing PHP script.
+- Run `wp login` on `after_wp_config_load` and avoid loading `wp-settings.php`, plugins, and themes while resolving users.
+- Read WordPress users, roles, and site URL through a bounded direct MySQL adapter using credentials from `wp-config.php`.
+- Correctly consume WP-CLI's standard global `--user=<id|login|email>` parameter instead of treating it as a command-local option.
+- Keep administrator selection separate from the existing non-administrator user picker.
+- Automatically select the only account on single-user sites.
+- Add an interactive action choice between opening the URL in the browser and copying it to the clipboard.
+- Add `--open` and `--copy` action flags while retaining `--no-open` compatibility.
+- Add browser support for macOS, Linux, WSL, and Windows with URL fallback.
+- Add clipboard support for macOS, Windows, WSL, Wayland, and X11 with URL fallback.
+- Create one-time login endpoints with a 1-minute lifetime, hashed token storage, and stale-file cleanup.
+- Add smoke, negative, and regression coverage for user selection, global `--user`, database parsing, browser/clipboard integration, and one-time endpoint behavior.
