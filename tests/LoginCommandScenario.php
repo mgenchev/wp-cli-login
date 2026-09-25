@@ -114,6 +114,7 @@ namespace WpLogin {
 
 namespace {
     require dirname( __DIR__ ) . '/src/LoginLink.php';
+    require dirname( __DIR__ ) . '/src/Terminal.php';
     require dirname( __DIR__ ) . '/src/LoginCommand.php';
 
     $assoc_args = array();

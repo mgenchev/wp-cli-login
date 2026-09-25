@@ -65,6 +65,10 @@ final class LoginCommand {
 
         $user = $this->resolve_user( $users );
 
+        if ( $this->requires_action_prompt( $assoc_args ) ) {
+            Terminal::clear_screen();
+        }
+
         WP_CLI::log( sprintf( '✓ User selected: %s (#%d)', $user->user_login, $user->ID ) );
 
         $action = $this->resolve_action( $assoc_args );
@@ -99,6 +103,16 @@ final class LoginCommand {
 
         $selector = new UserSelector( $users );
         return $selector->select();
+    }
+
+    /**
+     * @param array<string, mixed> $assoc_args
+     * @return bool
+     */
+    private function requires_action_prompt( $assoc_args ) {
+        return ! array_key_exists( 'open', $assoc_args )
+            && ! isset( $assoc_args['copy'] )
+            && ! isset( $assoc_args['no-open'] );
     }
 
     /**

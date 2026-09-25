@@ -6,6 +6,7 @@ require dirname( __DIR__ ) . '/src/Clipboard.php';
 require dirname( __DIR__ ) . '/src/Database.php';
 require dirname( __DIR__ ) . '/src/SiteContext.php';
 require dirname( __DIR__ ) . '/src/UserRepository.php';
+require dirname( __DIR__ ) . '/src/Terminal.php';
 require __DIR__ . '/FakeDatabase.php';
 require __DIR__ . '/BrowserTestDouble.php';
 require __DIR__ . '/ClipboardTestDouble.php';
@@ -14,6 +15,7 @@ use WpLogin\Database;
 use WpLogin\LoginLink;
 use WpLogin\SiteContext;
 use WpLogin\UserRepository;
+use WpLogin\Terminal;
 use WpLoginTests\BrowserTestDouble;
 use WpLoginTests\ClipboardTestDouble;
 use WpLoginTests\FakeDatabase;
@@ -27,6 +29,22 @@ $tests['command runs after wp-config but before WordPress runtime'] = function (
     assert_true( false === strpos( $source, 'load_wordpress()' ), 'The command must not load wp-settings.php.' );
     assert_true( false === strpos( $source, 'Preparing WordPress' ), 'The obsolete WordPress bootstrap spinner must be removed.' );
     assert_true( false !== strpos( $source, "get_global_config( 'user' )" ), 'Expected the WP-CLI global --user value to be consumed explicitly.' );
+};
+
+
+$tests['terminal clear screen emits ANSI redraw sequence only when interactive'] = function () {
+    $result = run_php_process( __DIR__ . '/TerminalScenario.php' );
+
+    assert_true( 0 === $result['exit_code'], 'Expected terminal clear-screen scenario to succeed.' );
+    assert_true( "\033[2J\033[Hafter-clear\n" === $result['output'], 'Expected the interactive clear-screen ANSI sequence.' );
+};
+
+$tests['interactive views use the shared clear-screen helper'] = function () {
+    $selector_source = file_get_contents( dirname( __DIR__ ) . '/src/UserSelector.php' );
+    $command_source  = file_get_contents( dirname( __DIR__ ) . '/src/LoginCommand.php' );
+
+    assert_true( 2 === substr_count( $selector_source, 'Terminal::clear_screen();' ), 'Expected user-picker views to clear before redraw.' );
+    assert_true( 1 === substr_count( $command_source, 'Terminal::clear_screen();' ), 'Expected the action-picker transition to clear before redraw.' );
 };
 
 $tests['global --user resolves directly without opening the interactive picker'] = function () {

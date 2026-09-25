@@ -31,6 +31,7 @@ final class UserSelector {
             return $users[0];
         }
 
+        Terminal::clear_screen();
         WP_CLI::log( '' );
         WP_CLI::log( 'Login as:' );
         WP_CLI::log( '  1) Administrator' );
@@ -76,6 +77,7 @@ final class UserSelector {
         $pages      = array();
         $page_index = 0;
         $cursor     = 0;
+        $notice     = null;
 
         while ( true ) {
             if ( ! isset( $pages[ $page_index ] ) ) {
@@ -87,7 +89,7 @@ final class UserSelector {
                     }
 
                     $page_index--;
-                    WP_CLI::warning( 'There are no more users on the next page.' );
+                    $notice = 'There are no more users on the next page.';
                     continue;
                 }
 
@@ -96,17 +98,24 @@ final class UserSelector {
 
             $page = $pages[ $page_index ];
 
+            Terminal::clear_screen();
             WP_CLI::log( '' );
             WP_CLI::log( sprintf( '%s — page %d', $title, $page_index + 1 ) );
             $this->print_users( $page['users'] );
 
             WP_CLI::log( '' );
             WP_CLI::log( 'Enter a list number, exact login/email, n for next page, or p for previous page.' );
+
+            if ( null !== $notice ) {
+                WP_CLI::warning( $notice );
+                $notice = null;
+            }
+
             $choice = $this->read_input( 'Select: ' );
 
             if ( 'n' === strtolower( $choice ) ) {
                 if ( ! $page['has_more'] ) {
-                    WP_CLI::warning( 'There are no more users on the next page.' );
+                    $notice = 'There are no more users on the next page.';
                     continue;
                 }
 
@@ -117,7 +126,7 @@ final class UserSelector {
 
             if ( 'p' === strtolower( $choice ) ) {
                 if ( 0 === $page_index ) {
-                    WP_CLI::warning( 'You are already on the first page.' );
+                    $notice = 'You are already on the first page.';
                     continue;
                 }
 
@@ -131,7 +140,7 @@ final class UserSelector {
                 return $selected;
             }
 
-            WP_CLI::warning( 'No user matched that selection.' );
+            $notice = 'No user matched that selection.';
         }
     }
 

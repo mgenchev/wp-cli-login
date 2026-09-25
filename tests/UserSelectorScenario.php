@@ -23,6 +23,7 @@ class WP_CLI {
 
 require dirname( __DIR__ ) . '/src/Database.php';
 require dirname( __DIR__ ) . '/src/UserRepository.php';
+require dirname( __DIR__ ) . '/src/Terminal.php';
 require __DIR__ . '/FakeDatabase.php';
 require dirname( __DIR__ ) . '/src/UserSelector.php';
 
